@@ -6,3 +6,5 @@ Welcome to VibeWeather (stylized as vibe.weather), a vibe coded weather app usin
 VibeWeather is meant to be a simple weather app with no bloat, just straight to the point!
 
 VibeWeather is under the MIT License
+
+WARNING: VIBE.WEATHER IS WORK IN PROGRESS
