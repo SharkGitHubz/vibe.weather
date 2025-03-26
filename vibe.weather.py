@@ -2,45 +2,65 @@ import requests
 import customtkinter as ctk
 from geopy.geocoders import Nominatim
 import geocoder
+import threading
+
+# Global geolocator instance for efficiency
+geolocator = Nominatim(user_agent="vibe.weather")
 
 # Function to fetch weather data
 def get_weather(location_name):
-    geolocator = Nominatim(user_agent="vibe.weather")
-    location = geolocator.geocode(location_name)
+    def fetch():
+        location = geolocator.geocode(location_name, timeout=10)
 
-    if location:
-        latitude = location.latitude
-        longitude = location.longitude
-        url = f"https://api.open-meteo.com/v1/forecast?latitude={latitude}&longitude={longitude}&current_weather=true&daily=precipitation_sum,uv_index_max,sunrise,sunset"
-        
-        try:
-            response = requests.get(url)
-            data = response.json()
-            
-            temperature = data["current_weather"]["temperature"]
-            wind_speed = data["current_weather"]["windspeed"]
-            precipitation = data["daily"]["precipitation_sum"][0]
-            uv_index = data["daily"]["uv_index_max"][0]
-            sunrise = data["daily"]["sunrise"][0].split("T")[1]
-            sunset = data["daily"]["sunset"][0].split("T")[1]
-            
-            result_label.configure(text=f"Location: {location_name}\nLatitude: {latitude:.2f}, Longitude: {longitude:.2f}\nTemperature: {temperature}°C\nWind Speed: {wind_speed} m/s\nPrecipitation: {precipitation} mm\nUV Index: {uv_index}\nSunrise: {sunrise}\nSunset: {sunset}")
-        except Exception as e:
-            result_label.configure(text="Error fetching weather data.")
-    else:
-        result_label.configure(text="Location not found.")
+        if location:
+            latitude, longitude = location.latitude, location.longitude
+            url = f"https://api.open-meteo.com/v1/forecast?latitude={latitude}&longitude={longitude}&current_weather=true&daily=precipitation_sum,uv_index_max,sunrise,sunset"
+
+            try:
+                response = requests.get(url, timeout=10)
+                data = response.json()
+
+                temperature = data["current_weather"]["temperature"]
+                wind_speed = data["current_weather"]["windspeed"]
+                precipitation = data["daily"]["precipitation_sum"][0]
+                uv_index = data["daily"]["uv_index_max"][0]
+                sunrise = data["daily"]["sunrise"][0].split("T")[1]
+                sunset = data["daily"]["sunset"][0].split("T")[1]
+
+                result = (
+                    f"Location: {location_name}\n"
+                    f"Latitude: {latitude:.2f}, Longitude: {longitude:.2f}\n"
+                    f"Temperature: {temperature}°C\n"
+                    f"Wind Speed: {wind_speed} m/s\n"
+                    f"Precipitation: {precipitation} mm\n"
+                    f"UV Index: {uv_index}\n"
+                    f"Sunrise: {sunrise}\n"
+                    f"Sunset: {sunset}"
+                )
+
+            except Exception:
+                result = "Error fetching weather data."
+        else:
+            result = "Location not found."
+
+        result_label.configure(text=result)
+
+    threading.Thread(target=fetch, daemon=True).start()
 
 # Function to detect and fetch weather for current location
 def get_current_location_weather():
-    g = geocoder.ip("me")
-    if g.latlng:
-        latitude, longitude = g.latlng
-        geolocator = Nominatim(user_agent="vibe.weather")
-        location = geolocator.reverse((latitude, longitude), language="en")
-        location_name = location.address if location else "Current Location"
-        get_weather(location_name)
-    else:
-        result_label.configure(text="Could not detect location.")
+    def fetch():
+        g = geocoder.ip("me")
+        if g.latlng:
+            latitude, longitude = g.latlng
+            location = geolocator.reverse((latitude, longitude), language="en", timeout=10)
+            location_name = location.address if location else f"{latitude},{longitude}"  # Use name if available
+
+            get_weather(location_name)  # Pass name instead of just coordinates
+        else:
+            result_label.configure(text="Could not detect location.")
+
+    threading.Thread(target=fetch, daemon=True).start()
 
 # Initialize CustomTkinter window
 ctk.set_appearance_mode("dark")
