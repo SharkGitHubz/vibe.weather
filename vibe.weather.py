@@ -7,9 +7,22 @@ import threading
 # Global geolocator instance for efficiency
 geolocator = Nominatim(user_agent="vibe.weather")
 
+# Cache to store weather data to avoid repeated API calls for the same location
+cache = {}
+
+# Function to safely update the result label on the main thread
+def update_result(result):
+    result_label.configure(text=result)
+
 # Function to fetch weather data
 def get_weather(location_name):
     def fetch():
+        if location_name in cache:
+            # If the location is in cache, use the cached result
+            result = cache[location_name]
+            root.after(0, update_result, result)
+            return
+
         location = geolocator.geocode(location_name, timeout=10)
 
         if location:
@@ -20,31 +33,43 @@ def get_weather(location_name):
                 response = requests.get(url, timeout=10)
                 data = response.json()
 
-                temperature = data["current_weather"]["temperature"]
-                wind_speed = data["current_weather"]["windspeed"]
-                precipitation = data["daily"]["precipitation_sum"][0]
-                uv_index = data["daily"]["uv_index_max"][0]
-                sunrise = data["daily"]["sunrise"][0].split("T")[1]
-                sunset = data["daily"]["sunset"][0].split("T")[1]
+                # Ensure the required data exists in the response
+                if "current_weather" in data and "temperature" in data["current_weather"]:
+                    temperature = data["current_weather"]["temperature"]
+                    wind_speed = data["current_weather"]["windspeed"]
+                    precipitation = data["daily"]["precipitation_sum"][0]
+                    uv_index = data["daily"]["uv_index_max"][0]
+                    sunrise = data["daily"]["sunrise"][0].split("T")[1]
+                    sunset = data["daily"]["sunset"][0].split("T")[1]
 
-                result = (
-                    f"Location: {location_name}\n"
-                    f"Latitude: {latitude:.2f}, Longitude: {longitude:.2f}\n"
-                    f"Temperature: {temperature}°C\n"
-                    f"Wind Speed: {wind_speed} m/s\n"
-                    f"Precipitation: {precipitation} mm\n"
-                    f"UV Index: {uv_index}\n"
-                    f"Sunrise: {sunrise}\n"
-                    f"Sunset: {sunset}"
-                )
+                    result = (
+                        f"Location: {location_name}\n"
+                        f"Latitude: {latitude:.2f}, Longitude: {longitude:.2f}\n"
+                        f"Temperature: {temperature}°C\n"
+                        f"Wind Speed: {wind_speed} m/s\n"
+                        f"Precipitation: {precipitation} mm\n"
+                        f"UV Index: {uv_index}\n"
+                        f"Sunrise: {sunrise}\n"
+                        f"Sunset: {sunset}"
+                    )
 
-            except Exception:
-                result = "Error fetching weather data."
+                    # Cache the result for future use
+                    cache[location_name] = result
+                else:
+                    result = "Unexpected API response structure."
+
+            except requests.exceptions.RequestException as e:
+                result = f"Request error: {e}"
+            except ValueError:
+                result = "Error parsing weather data."
+
         else:
             result = "Location not found."
 
-        result_label.configure(text=result)
+        # Update the UI safely on the main thread
+        root.after(0, update_result, result)
 
+    # Start the fetch function in a new thread
     threading.Thread(target=fetch, daemon=True).start()
 
 # Function to detect and fetch weather for current location
